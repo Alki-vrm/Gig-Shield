@@ -1,0 +1,166 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}
+    // Document ID: Firebase Auth UID
+    // Fields:
+    //   - uid: string (required) - User's unique ID
+    //   - email: string (required) - User's email
+    //   - phoneNumber: string (required) - Mobile number
+    //   - targetPremium: number (required) - Weekly premium target
+    //   - platform: string (required) - Gig platform
+    //   - city: string (required) - Operating city
+    //   - companyEmail: string (optional) - Work email
+    //   - dailySalary: number (required) - Daily earnings
+    //   - activeDays: number (required) - Active days in last 30
+    //   - role: string (optional) - enum ['worker', 'admin']
+    //
+    // Collection: /users/{userId}/policies/{policyId}
+    // Fields:
+    //   - userId: string (required) - Owner's UID
+    //   - status: string (required) - enum ['active', 'expired', 'pending']
+    //   - premiumPaid: number (required) - Amount paid
+    //   - maxPayout: number (required) - Maximum possible payout
+    //   - coverageStart: timestamp (required)
+    //   - coverageEnd: timestamp (required)
+    //   - risks: list (optional) - List of risk types
+    //
+    // Collection: /users/{userId}/claims/{claimId}
+    // Fields:
+    //   - userId: string (required) - Owner's UID
+    //   - policyId: string (required) - Associated policy ID
+    //   - event: string (required) - Event type (e.g., 'heatwave')
+    //   - payoutAmount: number (required)
+    //   - status: string (required) - enum ['initiated', 'completed', 'failed']
+    //   - timestamp: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "ganeshnadhgummadidala@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidString(field, min, max) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= min && 
+             request.resource.data[field].size() <= max;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'phoneNumber', 'targetPremium', 'platform', 'city', 'dailySalary', 'activeDays']) &&
+             hasOnlyAllowedFields(['uid', 'email', 'phoneNumber', 'targetPremium', 'platform', 'city', 'companyEmail', 'dailySalary', 'activeDays', 'role', 'createdAt', 'lastLogin']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) && data.email.size() < 100 &&
+             data.phoneNumber is string && data.phoneNumber.size() >= 10 && data.phoneNumber.size() <= 15 &&
+             data.targetPremium is number && data.targetPremium >= 10 &&
+             data.platform in ['Zomato', 'Swiggy', 'Zepto', 'Uber', 'Rapido', 'Other'] &&
+             data.city in ['Delhi', 'Mumbai'] &&
+             data.dailySalary is number && data.dailySalary >= 0 &&
+             data.activeDays is number && data.activeDays >= 1 && data.activeDays <= 30 &&
+             (!('companyEmail' in data) || data.companyEmail == "" || (isValidEmail(data.companyEmail) && data.companyEmail.size() < 100)) &&
+             (!('role' in data) || data.role in ['worker', 'admin']) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('lastLogin' in data) || data.lastLogin is timestamp);
+    }
+
+    function isValidPolicy(data) {
+      return hasRequiredFields(['userId', 'status', 'premiumPaid', 'maxPayout', 'coverageStart', 'coverageEnd']) &&
+             hasOnlyAllowedFields(['userId', 'status', 'premiumPaid', 'maxPayout', 'coverageStart', 'coverageEnd', 'risks', 'createdAt']) &&
+             data.userId == request.auth.uid &&
+             data.status in ['active', 'expired', 'pending'] &&
+             data.premiumPaid is number && data.premiumPaid >= 0 &&
+             data.maxPayout is number && data.maxPayout >= 0 &&
+             data.coverageStart is timestamp &&
+             data.coverageEnd is timestamp &&
+             (!('risks' in data) || (data.risks is list && data.risks.size() <= 10)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    function isValidClaim(data) {
+      return hasRequiredFields(['userId', 'policyId', 'event', 'payoutAmount', 'status', 'timestamp']) &&
+             hasOnlyAllowedFields(['userId', 'policyId', 'event', 'payoutAmount', 'status', 'timestamp', 'razorpayTransferId']) &&
+             data.userId == request.auth.uid &&
+             data.status in ['initiated', 'completed', 'failed'] &&
+             data.event is string && data.event.size() < 50 &&
+             data.payoutAmount is number && data.payoutAmount >= 0 &&
+             data.timestamp is timestamp &&
+             (!('razorpayTransferId' in data) || (data.razorpayTransferId is string && data.razorpayTransferId.size() < 100));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    //
+    // Grant 'admin' role read access to all users and their subcollections.
+    // Ensure authenticated users can read and write their own data.
+    //
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'worker' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == resource.data.role || isAdmin()) &&
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.email == resource.data.email;
+
+      match /policies/{policyId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidPolicy(request.resource.data);
+        allow update: if isAdmin() || (isOwner(userId) && isValidPolicy(request.resource.data) && 
+                        request.resource.data.userId == resource.data.userId &&
+                        request.resource.data.premiumPaid == resource.data.premiumPaid &&
+                        request.resource.data.maxPayout == resource.data.maxPayout &&
+                        request.resource.data.coverageStart == resource.data.coverageStart &&
+                        request.resource.data.coverageEnd == resource.data.coverageEnd);
+      }
+
+      match /claims/{claimId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidClaim(request.resource.data);
+        allow update: if isAdmin() || (isOwner(userId) && isValidClaim(request.resource.data) &&
+                        request.resource.data.userId == resource.data.userId &&
+                        request.resource.data.policyId == resource.data.policyId &&
+                        request.resource.data.payoutAmount == resource.data.payoutAmount);
+      }
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

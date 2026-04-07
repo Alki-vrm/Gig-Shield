@@ -1,0 +1,36 @@
+// ADD IMPORT
+import { saveToDatabase } from "./services/api";
+
+// ADD FUNCTION INSIDE COMPONENT
+const fileClaim = async () => {
+  if (!alert) return;
+
+  const id = Date.now();
+  const claim = {
+    uid: user.uid,
+    amount: 500,
+    triggerEvent: alert.currentAlert,
+    status: "Pending",
+    date: new Date().toISOString(),
+  };
+
+  await saveToDatabase("Payouts", id, claim);
+  alert("Claim submitted!");
+
+  setTimeout(async () => {
+    claim.status = "Approved";
+    await saveToDatabase("Payouts", id, claim);
+  }, 2000);
+};
+
+// ADD BUTTON
+{alert && (
+  <button onClick={fileClaim}>
+    Claim Compensation
+  </button>
+)}
+
+// ADD NAV BUTTON
+<button onClick={() => (window.location.href = "/worker-claims")}>
+  View Claims
+</button>

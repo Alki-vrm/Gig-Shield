@@ -1,0 +1,9 @@
+Do NOT modify or remove any existing functionality.
+
+Only ADD Claims Management:
+
+- WorkerClaims page
+- Claim button when alert active
+- Save claim in Payouts
+- Show claims list
+- Auto approve after 2 sec

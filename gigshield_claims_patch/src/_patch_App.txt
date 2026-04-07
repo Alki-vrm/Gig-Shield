@@ -1,0 +1,3 @@
+import WorkerClaims from "./WorkerClaims";
+
+<Route path="/worker-claims" element={<ProtectedRoute role="worker"><WorkerClaims /></ProtectedRoute>} />
