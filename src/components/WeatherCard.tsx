@@ -12,6 +12,7 @@ interface WeatherData {
 }
 
 export function WeatherCard({ data }: { data: WeatherData | null }) {
+  const API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
   if (!data) return (
     <div className="p-6 bg-slate-800 rounded-2xl animate-pulse h-48 border border-slate-700" />
   );
@@ -22,7 +23,6 @@ export function WeatherCard({ data }: { data: WeatherData | null }) {
     <div className="p-5 bg-slate-800 rounded-2xl border border-slate-700 shadow-xl overflow-hidden relative">
       {data.isMock && (
         <div className="absolute top-0 left-0 right-0 bg-amber-500 text-slate-900 text-[8px] font-black uppercase tracking-widest py-1 text-center z-10">
-          Demo Mode: Weather API Key Missing
         </div>
       )}
       <div className={`flex justify-between items-start mb-4 ${data.isMock ? "mt-4" : ""}`}>
