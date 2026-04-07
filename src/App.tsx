@@ -128,11 +128,44 @@ export default function App() {
   // Weather Polling
   useEffect(() => {
     const fetchWeather = async () => {
+      const API_KEY = import.meta.env.VITE_OPENWEATHER_API_KEY;
+      console.log("ENV KEY:", API_KEY);
+
+      if (!API_KEY) {
+        console.error("VITE_OPENWEATHER_API_KEY is undefined. Check your .env file and restart the dev server.");
+        return;
+      }
+
       try {
-        const res = await axios.get("/api/weather", {
-          params: { lat: location.lat, lon: location.lng }
+        // Fetch current weather
+        const weatherRes = await axios.get(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${location.lat}&lon=${location.lng}&appid=${API_KEY}&units=metric`
+        );
+
+        if (weatherRes.data.cod !== 200) {
+          console.error("OpenWeatherMap error:", weatherRes.data);
+          return;
+        }
+
+        // Fetch AQI
+        const aqiRes = await axios.get(
+          `https://api.openweathermap.org/data/2.5/air_pollution?lat=${location.lat}&lon=${location.lng}&appid=${API_KEY}`
+        );
+
+        const w = weatherRes.data;
+        const rawAqi = aqiRes.data.list?.[0]?.components?.pm2_5 ?? 0;
+        const aqiIndex = aqiRes.data.list?.[0]?.main?.aqi ?? 1;
+
+        setWeather({
+          temp: w.main.temp,
+          condition: w.weather?.[0]?.description ?? "Clear",
+          rain: w.rain?.["1h"] ?? 0,
+          windSpeed: Math.round(w.wind.speed * 3.6), // m/s → km/h
+          humidity: w.main.humidity,
+          aqi: aqiIndex,
+          rawAqi,
+          isMock: false,
         });
-        setWeather(res.data);
       } catch (error: any) {
         console.error("Failed to fetch weather:", error.message, error.response?.data);
       }
